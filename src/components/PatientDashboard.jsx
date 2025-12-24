@@ -19,7 +19,7 @@ const PatientDashboard = () => {
         setLoading(true);
         try {
             // Get patient profile
-            const patientsRes = await api.get('/patient/');
+            const patientsRes = await api.get('/patient');
             const myProfile = patientsRes.data.find(p => p.userId === user.userId);
 
             if (myProfile) {

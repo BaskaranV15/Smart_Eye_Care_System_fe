@@ -18,7 +18,7 @@ const Login = () => {
                 setError('Login failed');
             }
         } catch (err) {
-            setError('Invalid credentials');
+            setError('Invalid credentials: '+err.message);
         }
     };
 

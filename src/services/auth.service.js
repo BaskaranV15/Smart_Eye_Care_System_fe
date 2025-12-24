@@ -2,7 +2,7 @@ import api from './api';
 import { jwtDecode } from "jwt-decode";
 
 const login = async (username, password) => {
-    const response = await api.post('/auth/login', { username, password });
+    const response = await api.post('http://localhost:9090/api/auth/login', { userName:username, password });
     if (response.data.token) {
         const decoded = jwtDecode(response.data.token);
         const user = {
