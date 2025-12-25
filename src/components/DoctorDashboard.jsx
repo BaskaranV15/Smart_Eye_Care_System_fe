@@ -1,287 +1,274 @@
-import React, { useState, useEffect } from 'react';
-import api from '../services/api';
-import AuthService from '../services/auth.service';
-import { useNavigate } from 'react-router-dom';
+import React, { useEffect, useState } from "react";
+import api from "../services/api";
+import AuthService from "../services/auth.service";
+import { useNavigate } from "react-router-dom";
 
 const DoctorDashboard = () => {
-    const [activeTab, setActiveTab] = useState('patients');
-    const [patients, setPatients] = useState([]);
-    const [myReports, setMyReports] = useState([]);
-    const [loading, setLoading] = useState(false);
-    const [showReportForm, setShowReportForm] = useState(false);
-    const user = AuthService.getCurrentUser();
-    const navigate = useNavigate();
+  const user = AuthService.getCurrentUser();
+  const navigate = useNavigate();
 
-    // Report form state
-    const [reportForm, setReportForm] = useState({
-        patientId: '',
-        doctorId: user?.userId || '',
-        prediction: '',
-        severity: 'Mild',
-        doctorPrescription: '',
+  const [activeTab, setActiveTab] = useState("patients");
+  const [patients, setPatients] = useState([]);
+  const [reports, setReports] = useState([]);
+  const [loading, setLoading] = useState(false);
+
+  const [showForm, setShowForm] = useState(false);
+  const [imageFile, setImageFile] = useState(null);
+  const [uploading, setUploading] = useState(false);
+  const [predictionResult, setPredictionResult] = useState(null);
+
+  const [form, setForm] = useState({
+    patientId: "",
+    prediction: "",
+    severity: "Mild",
+    doctorPrescription: "",
+    imageUrls: []
+  });
+
+  // ================= LOAD DATA =================
+  useEffect(() => {
+    loadData();
+  }, [activeTab]);
+
+  const loadData = async () => {
+    setLoading(true);
+    try {
+      if (activeTab === "patients") {
+        const res = await api.get("/patient");
+        setPatients(res.data);
+      } else {
+        const res = await api.get("/report/byDoctor/me");
+        setReports(res.data);
+      }
+    } catch (err) {
+      console.error(err);
+      alert("Failed to load data");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ================= ML UPLOAD =================
+  const uploadAndPredict = async () => {
+    if (!imageFile) {
+      alert("Select image first");
+      return;
+    }
+
+    const fd = new FormData();
+    fd.append("file", imageFile);
+
+    try {
+      setUploading(true);
+      const res = await api.post("/images/upload-and-predict", fd);
+
+      setForm(prev => ({
+        ...prev,
+        prediction: res.data.prediction.result,
+        imageUrls: [...prev.imageUrls, res.data.imageUrl]
+      }));
+
+      setPredictionResult(res.data.prediction);
+    } catch (err) {
+      alert("Prediction failed");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  // ================= CREATE REPORT =================
+  const createReport = async (e) => {
+    e.preventDefault();
+
+    try {
+      await api.post("/report/create", form);
+      alert("Report created");
+
+      setForm({
+        patientId: "",
+        prediction: "",
+        severity: "Mild",
+        doctorPrescription: "",
         imageUrls: []
-    });
+      });
 
-    const [imageUrl, setImageUrl] = useState('');
+      setImageFile(null);
+      setPredictionResult(null);
+      setShowForm(false);
+      setActiveTab("reports");
+      loadData();
+    } catch (err) {
+      alert("Create report failed");
+    }
+  };
 
-    useEffect(() => {
-        loadData();
-    }, [activeTab]);
+  // ================= UI =================
+  return (
+    <div className="container mt-4">
+      <h2>Doctor Dashboard</h2>
 
-    const loadData = async () => {
-        setLoading(true);
-        try {
-            if (activeTab === 'patients') {
-                const res = await api.get('/patient/');
-                setPatients(res.data);
-            } else if (activeTab === 'reports') {
-                // Get doctor ID from user profile
-                const doctorsRes = await api.get('/doctors/');
-                const myDoctor = doctorsRes.data.find(d => d.userId === user.userId);
-                if (myDoctor) {
-                    const reportsRes = await api.get(`/report/byDoctor/${myDoctor.doctorId}`);
-                    setMyReports(reportsRes.data);
-                }
-            }
-        } catch (err) {
-            console.error('Failed to load data:', err);
-        } finally {
-            setLoading(false);
-        }
-    };
+      {/* TABS */}
+      <ul className="nav nav-tabs mb-4">
+        <li className="nav-item">
+          <button
+            className={`nav-link ${activeTab === "patients" ? "active" : ""}`}
+            onClick={() => setActiveTab("patients")}
+          >
+            Patients
+          </button>
+        </li>
+        <li className="nav-item">
+          <button
+            className={`nav-link ${activeTab === "reports" ? "active" : ""}`}
+            onClick={() => setActiveTab("reports")}
+          >
+            My Reports
+          </button>
+        </li>
+      </ul>
 
-    const handleAddImage = () => {
-        if (imageUrl.trim()) {
-            setReportForm({
-                ...reportForm,
-                imageUrls: [...reportForm.imageUrls, imageUrl]
-            });
-            setImageUrl('');
-        }
-    };
+      {/* ================= PATIENTS ================= */}
+      {activeTab === "patients" && (
+        <div className="card">
+          <div className="card-header d-flex justify-content-between">
+            <h5>Patients</h5>
+            <button
+              className="btn btn-primary"
+              onClick={() => {
+                setShowForm(true);
+                setActiveTab("reports");
+              }}
+            >
+              Create Report
+            </button>
+          </div>
 
-    const handleRemoveImage = (index) => {
-        setReportForm({
-            ...reportForm,
-            imageUrls: reportForm.imageUrls.filter((_, i) => i !== index)
-        });
-    };
-
-    const handleCreateReport = async (e) => {
-        e.preventDefault();
-        try {
-            await api.post('/report/create', reportForm);
-            alert('Report created successfully!');
-            setShowReportForm(false);
-            setReportForm({
-                patientId: '',
-                doctorId: user?.userId || '',
-                prediction: '',
-                severity: 'Mild',
-                doctorPrescription: '',
-                imageUrls: []
-            });
-            setActiveTab('reports');
-            loadData();
-        } catch (err) {
-            alert('Failed to create report: ' + (err.response?.data?.message || err.message));
-        }
-    };
-
-    const viewReport = (reportId) => {
-        navigate(`/report/${reportId}`);
-    };
-
-    return (
-        <div className="container-fluid py-4">
-            <h2 className="mb-4">Doctor Dashboard</h2>
-
-            {/* Tabs */}
-            <ul className="nav nav-tabs mb-4">
-                <li className="nav-item">
-                    <button className={`nav-link ${activeTab === 'patients' ? 'active' : ''}`} onClick={() => setActiveTab('patients')}>
-                        Patients
-                    </button>
-                </li>
-                <li className="nav-item">
-                    <button className={`nav-link ${activeTab === 'reports' ? 'active' : ''}`} onClick={() => setActiveTab('reports')}>
-                        My Reports
-                    </button>
-                </li>
-            </ul>
-
-            {/* Patients Tab */}
-            {activeTab === 'patients' && (
-                <div className="card">
-                    <div className="card-header d-flex justify-content-between align-items-center">
-                        <h5>All Patients</h5>
-                        <button className="btn btn-primary" onClick={() => { setShowReportForm(true); setActiveTab('reports'); }}>
-                            Create New Report
-                        </button>
-                    </div>
-                    <div className="card-body">
-                        {loading ? <p>Loading...</p> : (
-                            <table className="table table-striped">
-                                <thead>
-                                    <tr>
-                                        <th>ID</th>
-                                        <th>Name</th>
-                                        <th>DOB</th>
-                                        <th>Contact</th>
-                                        <th>Address</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {patients.map(patient => (
-                                        <tr key={patient.patientId}>
-                                            <td>{patient.patientId}</td>
-                                            <td>{patient.firstName} {patient.lastName}</td>
-                                            <td>{patient.dateOfBirth}</td>
-                                            <td>{patient.contactNumber}</td>
-                                            <td>{patient.address}</td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        )}
-                    </div>
-                </div>
+          <div className="card-body">
+            {loading ? "Loading..." : (
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>ID</th><th>Name</th><th>Contact</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {patients.map(p => (
+                    <tr key={p.patientId}>
+                      <td>{p.patientId}</td>
+                      <td>{p.firstName} {p.lastName}</td>
+                      <td>{p.contactNumber}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             )}
-
-            {/* Reports Tab */}
-            {activeTab === 'reports' && (
-                <div>
-                    {showReportForm && (
-                        <div className="card mb-4">
-                            <div className="card-header">
-                                <h5>Create New Report</h5>
-                            </div>
-                            <div className="card-body">
-                                <form onSubmit={handleCreateReport}>
-                                    <div className="row mb-3">
-                                        <div className="col-md-6">
-                                            <label className="form-label">Patient ID *</label>
-                                            <input
-                                                type="number"
-                                                className="form-control"
-                                                value={reportForm.patientId}
-                                                onChange={(e) => setReportForm({ ...reportForm, patientId: e.target.value })}
-                                                required
-                                            />
-                                        </div>
-                                        <div className="col-md-6">
-                                            <label className="form-label">Severity *</label>
-                                            <select
-                                                className="form-select"
-                                                value={reportForm.severity}
-                                                onChange={(e) => setReportForm({ ...reportForm, severity: e.target.value })}
-                                            >
-                                                <option value="Mild">Mild</option>
-                                                <option value="Moderate">Moderate</option>
-                                                <option value="Severe">Severe</option>
-                                            </select>
-                                        </div>
-                                    </div>
-                                    <div className="mb-3">
-                                        <label className="form-label">Prediction/Diagnosis *</label>
-                                        <input
-                                            type="text"
-                                            className="form-control"
-                                            value={reportForm.prediction}
-                                            onChange={(e) => setReportForm({ ...reportForm, prediction: e.target.value })}
-                                            required
-                                        />
-                                    </div>
-                                    <div className="mb-3">
-                                        <label className="form-label">Prescription *</label>
-                                        <textarea
-                                            className="form-control"
-                                            rows="3"
-                                            value={reportForm.doctorPrescription}
-                                            onChange={(e) => setReportForm({ ...reportForm, doctorPrescription: e.target.value })}
-                                            required
-                                        ></textarea>
-                                    </div>
-                                    <div className="mb-3">
-                                        <label className="form-label">Report Images</label>
-                                        <div className="input-group mb-2">
-                                            <input
-                                                type="url"
-                                                className="form-control"
-                                                placeholder="Image URL"
-                                                value={imageUrl}
-                                                onChange={(e) => setImageUrl(e.target.value)}
-                                            />
-                                            <button type="button" className="btn btn-secondary" onClick={handleAddImage}>Add Image</button>
-                                        </div>
-                                        {reportForm.imageUrls.length > 0 && (
-                                            <ul className="list-group">
-                                                {reportForm.imageUrls.map((url, index) => (
-                                                    <li key={index} className="list-group-item d-flex justify-content-between align-items-center">
-                                                        {url}
-                                                        <button type="button" className="btn btn-sm btn-danger" onClick={() => handleRemoveImage(index)}>Remove</button>
-                                                    </li>
-                                                ))}
-                                            </ul>
-                                        )}
-                                    </div>
-                                    <div className="d-flex gap-2">
-                                        <button type="submit" className="btn btn-success">Create Report</button>
-                                        <button type="button" className="btn btn-secondary" onClick={() => setShowReportForm(false)}>Cancel</button>
-                                    </div>
-                                </form>
-                            </div>
-                        </div>
-                    )}
-
-                    <div className="card">
-                        <div className="card-header d-flex justify-content-between align-items-center">
-                            <h5>My Reports</h5>
-                            {!showReportForm && (
-                                <button className="btn btn-primary" onClick={() => setShowReportForm(true)}>
-                                    Create New Report
-                                </button>
-                            )}
-                        </div>
-                        <div className="card-body">
-                            {loading ? <p>Loading...</p> : (
-                                <table className="table table-striped">
-                                    <thead>
-                                        <tr>
-                                            <th>ID</th>
-                                            <th>Patient</th>
-                                            <th>Prediction</th>
-                                            <th>Severity</th>
-                                            <th>Created At</th>
-                                            <th>Actions</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {myReports.map(report => (
-                                            <tr key={report.reportId}>
-                                                <td>{report.reportId}</td>
-                                                <td>{report.patient?.firstName} {report.patient?.lastName}</td>
-                                                <td>{report.prediction}</td>
-                                                <td>
-                                                    <span className={`badge ${report.severity === 'Severe' ? 'bg-danger' : report.severity === 'Moderate' ? 'bg-warning' : 'bg-success'}`}>
-                                                        {report.severity}
-                                                    </span>
-                                                </td>
-                                                <td>{new Date(report.createdAt).toLocaleDateString()}</td>
-                                                <td>
-                                                    <button className="btn btn-sm btn-info" onClick={() => viewReport(report.reportId)}>View</button>
-                                                </td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            )}
-                        </div>
-                    </div>
-                </div>
-            )}
+          </div>
         </div>
-    );
+      )}
+
+      {/* ================= CREATE REPORT ================= */}
+      {activeTab === "reports" && showForm && (
+        <div className="card mb-4">
+          <div className="card-header">Create Report</div>
+          <div className="card-body">
+            <form onSubmit={createReport}>
+              <input
+                className="form-control mb-2"
+                placeholder="Patient ID"
+                required
+                value={form.patientId}
+                onChange={e => setForm({ ...form, patientId: e.target.value })}
+              />
+
+              <select
+                className="form-select mb-2"
+                value={form.severity}
+                onChange={e => setForm({ ...form, severity: e.target.value })}
+              >
+                <option>Mild</option>
+                <option>Moderate</option>
+                <option>Severe</option>
+              </select>
+
+              <input
+                className="form-control mb-2"
+                placeholder="Prediction"
+                readOnly
+                value={form.prediction}
+              />
+
+              <textarea
+                className="form-control mb-2"
+                placeholder="Prescription"
+                required
+                value={form.doctorPrescription}
+                onChange={e => setForm({ ...form, doctorPrescription: e.target.value })}
+              />
+
+              <input
+                type="file"
+                className="form-control mb-2"
+                accept="image/*"
+                onChange={e => setImageFile(e.target.files[0])}
+              />
+
+              <button
+                type="button"
+                className="btn btn-secondary mb-2"
+                onClick={uploadAndPredict}
+                disabled={uploading}
+              >
+                {uploading ? "Predicting..." : "Upload & Predict"}
+              </button>
+
+              {predictionResult && (
+                <pre className="alert alert-info">
+                  {JSON.stringify(predictionResult, null, 2)}
+                </pre>
+              )}
+
+              <button className="btn btn-success">Create Report</button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ================= REPORTS ================= */}
+      {activeTab === "reports" && (
+        <div className="card">
+          <div className="card-header">My Reports</div>
+          <div className="card-body">
+            {loading ? "Loading..." : (
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>ID</th><th>Prediction</th><th>Severity</th><th>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {reports.map(r => (
+                    <tr key={r.reportId}>
+                      <td>{r.reportId}</td>
+                      <td>{r.prediction}</td>
+                      <td>{r.severity}</td>
+                      <td>
+                        <button
+                          className="btn btn-info btn-sm"
+                          onClick={() => navigate(`/report/${r.reportId}`)}
+                        >
+                          View
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
 };
 
 export default DoctorDashboard;

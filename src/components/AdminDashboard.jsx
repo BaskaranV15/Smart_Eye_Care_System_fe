@@ -46,7 +46,7 @@ const AdminDashboard = () => {
                     setDoctors(doctorsRes.data);
                     break;
                 case 'patients':
-                    const patientsRes = await api.get('/patient/');
+                    const patientsRes = await api.get('/patient');
                     setPatients(patientsRes.data);
                     break;
                 case 'reports':
